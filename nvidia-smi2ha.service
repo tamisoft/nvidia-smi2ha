@@ -1,0 +1,16 @@
+[Unit]
+Description=NVidia SMI to Home Assistant MQTT
+After=network.target
+
+[Service]
+Type=simple
+# We are using a venv for this script
+WorkingDirectory=%h/nvidia-stat
+EnvironmentFile=%h/nvidia-stat/.env
+ExecStartPre=/bin/env python -m venv %h/nvidia-stat/venv
+ExecStartPre=/bin/env %h/nvidia-stat/venv/bin/pip install -r %h/nvidia-stat/requirements.txt
+ExecStart=%h/nvidia-stat/venv/bin/python nvidia-smi2ha.py
+Restart=always
+
+[Install]
+WantedBy=default.target
