@@ -10,6 +10,7 @@ import time
 import paho.mqtt.client as mqtt
 
 from smi2ha_core import (
+    SENSOR_DESCRIPTIONS,
     SENSOR_KEYS,
     ConfigError,
     ConfigWatcher,
@@ -28,23 +29,6 @@ password = os.environ.get('MQTT_PASSWORD', '')
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "config.yaml")
 AVAILABILITY_TOPIC = "nvidia-smi/availability"
-
-SENSOR_DESCRIPTIONS = {
-    "pwr": {"name": "Power Usage", "device_class": "power", "unit": "W"},
-    "gtemp": {"name": "GPU Temp", "device_class": "temperature", "unit": "°C"},
-    "mtemp": {"name": "Memory Temp", "device_class": "temperature", "unit": "°C"},
-    "sm": {"name": "SM Util", "unit": "%"},
-    "mem": {"name": "Memory Util", "unit": "%"},
-    "enc": {"name": "Encoder Util", "unit": "%"},
-    "dec": {"name": "Decoder Util", "unit": "%"},
-    "jpg": {"name": "JPEG Util", "unit": "%"},
-    "ofa": {"name": "Optical Flow Util", "unit": "%"},
-    "mclk": {"name": "Memory Clock", "device_class": "frequency", "unit": "MHz"},
-    "pclk": {"name": "Processor Clock", "device_class": "frequency", "unit": "MHz"},
-    "pci": {"name": "PCI Throughput", "device_class": "data_rate", "unit": "MB/s"},
-    "rxpci": {"name": "PCI RX", "device_class": "data_rate", "unit": "MB/s"},
-    "txpci": {"name": "PCI TX", "device_class": "data_rate", "unit": "MB/s"},
-}
 
 
 def get_nvidia_gpus():

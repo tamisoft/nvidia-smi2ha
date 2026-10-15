@@ -13,7 +13,29 @@ import yaml
 SENSOR_KEYS = (
     "pwr", "gtemp", "mtemp", "sm", "mem", "enc", "dec", "jpg", "ofa",
     "mclk", "pclk", "pci", "rxpci", "txpci",
+    "pviol", "tviol", "fb", "bar1",
 )
+
+SENSOR_DESCRIPTIONS = {
+    "pwr": {"name": "Power Usage", "device_class": "power", "unit": "W"},
+    "gtemp": {"name": "GPU Temp", "device_class": "temperature", "unit": "°C"},
+    "mtemp": {"name": "Memory Temp", "device_class": "temperature", "unit": "°C"},
+    "sm": {"name": "SM Util", "unit": "%"},
+    "mem": {"name": "Memory Util", "unit": "%"},
+    "enc": {"name": "Encoder Util", "unit": "%"},
+    "dec": {"name": "Decoder Util", "unit": "%"},
+    "jpg": {"name": "JPEG Util", "unit": "%"},
+    "ofa": {"name": "Optical Flow Util", "unit": "%"},
+    "mclk": {"name": "Memory Clock", "device_class": "frequency", "unit": "MHz"},
+    "pclk": {"name": "Processor Clock", "device_class": "frequency", "unit": "MHz"},
+    "pci": {"name": "PCI Throughput", "device_class": "data_rate", "unit": "MB/s"},
+    "rxpci": {"name": "PCI RX", "device_class": "data_rate", "unit": "MB/s"},
+    "txpci": {"name": "PCI TX", "device_class": "data_rate", "unit": "MB/s"},
+    "pviol": {"name": "Power Violation", "unit": "%"},
+    "tviol": {"name": "Thermal Violation", "unit": "%"},
+    "fb": {"name": "Frame Buffer", "unit": "MB"},
+    "bar1": {"name": "BAR1 Memory", "unit": "MB"},
+}
 VALID_TYPES = ("last", "mean", "median", "max", "min")
 BUILT_IN_DEFAULTS = {"interval": 10.0, "type": "last"}
 

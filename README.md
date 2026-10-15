@@ -32,8 +32,8 @@ Reporting is controlled by `config.yaml` in the repository directory
 (copy `config.yaml.example` to start). The file is watched and reloaded
 automatically; no service restart is needed.
 
-Each of the 14 sensors (`pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk
-pci rxpci txpci`) can set:
+Each of the 18 sensors (`pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk
+pci rxpci txpci pviol tviol fb bar1`) can set:
 
 - `interval` (seconds, >= 1) — how often the sensor reports
 - `type` — `last`, `mean`, `median`, `max` or `min`; the value published is
