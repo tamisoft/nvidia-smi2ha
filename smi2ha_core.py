@@ -4,6 +4,7 @@ No MQTT, subprocess, or threading here so everything is unit-testable.
 """
 
 import os
+import statistics
 
 import yaml
 
@@ -103,3 +104,30 @@ def load_config(path):
         sensors[key] = _load_sensor(key, entry, defaults)
 
     return {"defaults": defaults, "sensors": sensors}
+
+
+def aggregate(samples, now, interval, agg_type):
+    """Aggregate (timestamp, value) samples over [now - interval, now].
+
+    None values (dmon '-') are excluded. Returns None when no usable
+    sample remains in the window.
+    """
+    window = [(ts, v) for ts, v in samples
+              if v is not None and ts >= now - interval]
+    if not window:
+        return None
+    if agg_type == "last":
+        return max(window, key=lambda pair: pair[0])[1]
+    values = [v for _, v in window]
+    if agg_type == "mean":
+        return sum(values) / len(values)
+    if agg_type == "median":
+        return statistics.median(values)
+    if agg_type == "max":
+        return max(values)
+    return min(values)
+
+
+def format_value(v):
+    s = f"{v:.2f}".rstrip("0").rstrip(".")
+    return s if s else "0"
