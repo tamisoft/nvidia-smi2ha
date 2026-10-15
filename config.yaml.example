@@ -6,12 +6,13 @@
 # Every sensor accepts:
 #   interval: seconds between reports (integer >= 1)
 #   type:     last | mean | median | max | min
+#   enabled: false   stop registering this sensor (removes its Home Assistant entity)
 #
 # Sensors not listed under `sensors` use `defaults`.
 # Without a config.yaml the built-in defaults are: interval 10, type last.
 #
 # Available sensors:
-#   pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk pci rxpci txpci pviol tviol fb bar1
+#   pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk pci rxpci txpci pviol tviol fb bar1 ccpm sbecc dbecc
 
 defaults:
   interval: 10
@@ -29,3 +30,6 @@ sensors:
   mtemp:
     interval: 60
     type: max
+  # The Tesla P4 does not report a memory temperature: don't register it
+  mtemp:
+    enabled: false

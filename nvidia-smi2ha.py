@@ -58,6 +58,10 @@ def publish_configs(client, gpus, config):
     for gpu in gpus:
         uuid = gpu['uuid']
         for key in SENSOR_KEYS:
+            if key in config["disabled"]:
+                client.publish(f"homeassistant/sensor/{uuid}_{key}/config",
+                               "", retain=True)
+                continue
             desc = SENSOR_DESCRIPTIONS[key]
             interval = config["sensors"][key]["interval"]
             payload = {

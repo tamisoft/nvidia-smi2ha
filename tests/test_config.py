@@ -99,3 +99,23 @@ def test_invalid_defaults_field_falls_back(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "invalid defaults.interval" in out
     assert "invalid defaults.type" in out
+
+
+def test_disabled_sensor_recorded(tmp_path):
+    p = write(tmp_path,
+              "sensors:\n  mtemp: {interval: 10, type: last, enabled: false}\n")
+    cfg = load_config(p)
+    assert cfg["disabled"] == frozenset({"mtemp"})
+    assert cfg["sensors"]["mtemp"] == {"interval": 10.0, "type": "last"}
+
+
+def test_enabled_true_is_default(tmp_path):
+    p = write(tmp_path, "")
+    assert load_config(p)["disabled"] == frozenset()
+
+
+def test_invalid_enabled_stays_enabled(tmp_path, capsys):
+    p = write(tmp_path, "sensors:\n  pwr: {enabled: nope}\n")
+    cfg = load_config(p)
+    assert cfg["disabled"] == frozenset()
+    assert "invalid enabled for 'pwr'" in capsys.readouterr().out

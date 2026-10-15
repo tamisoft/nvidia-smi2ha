@@ -70,3 +70,25 @@ def test_reload_reports_immediately_with_new_settings():
         s.on_sample("u1", "pwr", float(i), 100.0)
     out = s.tick(62.0)
     assert ("u1", "pwr", 100.0) in out
+
+
+def test_disabled_sensor_not_reported():
+    cfg = make_cfg(pwr={"interval": 10.0, "type": "last"})
+    cfg["disabled"] = frozenset({"pwr"})
+    s = Scheduler(cfg, ["u1"])
+    s.on_sample("u1", "pwr", 1.0, 50.0)
+    assert s.tick(2.0) == []
+    s.on_sample("u1", "pwr", 15.0, 60.0)
+    assert s.tick(16.0) == []
+
+
+def test_reload_enabling_sensor_reports_immediately():
+    cfg = make_cfg(pwr={"interval": 10.0, "type": "last"})
+    cfg["disabled"] = frozenset({"pwr"})
+    s = Scheduler(cfg, ["u1"])
+    s.on_sample("u1", "pwr", 1.0, 50.0)
+    assert s.tick(2.0) == []
+    s.reload_config(make_cfg(pwr={"interval": 10.0, "type": "last"}))
+    s.on_sample("u1", "pwr", 3.0, 70.0)
+    out = s.tick(3.5)
+    assert ("u1", "pwr", 70.0) in out

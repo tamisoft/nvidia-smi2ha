@@ -32,12 +32,14 @@ Reporting is controlled by `config.yaml` in the repository directory
 (copy `config.yaml.example` to start). The file is watched and reloaded
 automatically; no service restart is needed.
 
-Each of the 18 sensors (`pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk
-pci rxpci txpci pviol tviol fb bar1`) can set:
+Each of the 21 sensors (`pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk
+pci rxpci txpci pviol tviol fb bar1 ccpm sbecc dbecc`) can set:
 
 - `interval` (seconds, >= 1) — how often the sensor reports
 - `type` — `last`, `mean`, `median`, `max` or `min`; the value published is
   this aggregation over the samples collected during the interval
+- `enabled: false` — stop registering the sensor entirely; the exporter
+  publishes an empty config which removes the entity from Home Assistant
 
 Sensors not listed use `defaults` (built-in: `interval: 10`, `type: last`).
 Example: reporting the average power draw once per minute:

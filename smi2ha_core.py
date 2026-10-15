@@ -14,6 +14,7 @@ SENSOR_KEYS = (
     "pwr", "gtemp", "mtemp", "sm", "mem", "enc", "dec", "jpg", "ofa",
     "mclk", "pclk", "pci", "rxpci", "txpci",
     "pviol", "tviol", "fb", "bar1",
+    "ccpm", "sbecc", "dbecc",
 )
 
 SENSOR_DESCRIPTIONS = {
@@ -35,6 +36,9 @@ SENSOR_DESCRIPTIONS = {
     "tviol": {"name": "Thermal Violation", "unit": "%"},
     "fb": {"name": "Frame Buffer", "unit": "MB"},
     "bar1": {"name": "BAR1 Memory", "unit": "MB"},
+    "ccpm": {"name": "Compute Cluster Memory", "unit": "MB"},
+    "sbecc": {"name": "Single Bit ECC Errors", "unit": "errors"},
+    "dbecc": {"name": "Double Bit ECC Errors", "unit": "errors"},
 }
 VALID_TYPES = ("last", "mean", "median", "max", "min")
 BUILT_IN_DEFAULTS = {"interval": 10.0, "type": "last"}
@@ -48,6 +52,7 @@ def built_in_config():
     return {
         "defaults": dict(BUILT_IN_DEFAULTS),
         "sensors": {key: dict(BUILT_IN_DEFAULTS) for key in SENSOR_KEYS},
+        "disabled": frozenset(),
     }
 
 
@@ -122,13 +127,21 @@ def load_config(path):
     raw_sensors = raw.get("sensors")
     if raw_sensors is not None and not isinstance(raw_sensors, dict):
         raise ConfigError("'sensors' must be a mapping")
+    disabled = set()
     for key, entry in (raw_sensors or {}).items():
         if key not in sensors:
             print(f"WARNING: unknown sensor key '{key}' ignored")
             continue
         sensors[key] = _load_sensor(key, entry, defaults)
+        if isinstance(entry, dict) and entry.get("enabled") is not None:
+            if entry["enabled"] is False:
+                disabled.add(key)
+            elif entry["enabled"] is not True:
+                print(f"WARNING: invalid enabled for '{key}', "
+                      f"sensor stays enabled")
 
-    return {"defaults": defaults, "sensors": sensors}
+    return {"defaults": defaults, "sensors": sensors,
+            "disabled": frozenset(disabled)}
 
 
 def aggregate(samples, now, interval, agg_type):
@@ -183,6 +196,8 @@ class Scheduler:
         for (uuid, key), buf in self._buffers.items():
             setting = self._config["sensors"][key]
             self._prune(buf, now, setting["interval"])
+            if key in self._config["disabled"]:
+                continue
             next_due = self._next_due[(uuid, key)]
             if next_due is not None and now < next_due:
                 continue
