@@ -3,6 +3,7 @@
 No MQTT, subprocess, or threading here so everything is unit-testable.
 """
 
+import math
 import os
 import statistics
 from collections import deque
@@ -30,7 +31,8 @@ def built_in_config():
 
 def _valid_interval(value):
     return (isinstance(value, (int, float))
-            and not isinstance(value, bool) and value >= 1)
+            and not isinstance(value, bool) and value >= 1
+            and math.isfinite(value))
 
 
 def _load_defaults(raw_defaults):

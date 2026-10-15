@@ -85,6 +85,13 @@ def test_non_mapping_sensor_entry_ignored(tmp_path, capsys):
     assert "sensor 'pwr' entry must be a mapping" in capsys.readouterr().out
 
 
+def test_infinite_interval_falls_back_to_defaults(tmp_path, capsys):
+    p = write(tmp_path, "sensors:\n  pwr: {interval: .inf, type: last}\n")
+    cfg = load_config(p)
+    assert cfg["sensors"]["pwr"] == {"interval": 10.0, "type": "last"}
+    assert "invalid interval for 'pwr'" in capsys.readouterr().out
+
+
 def test_invalid_defaults_field_falls_back(tmp_path, capsys):
     p = write(tmp_path, "defaults:\n  interval: -3\n  type: rms\n")
     cfg = load_config(p)

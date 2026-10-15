@@ -141,6 +141,7 @@ def reader_loop(proc, index_to_uuid, scheduler, stop_event):
 
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     print("*** Starting NVIDIA MQTT Exporter ***")
 
     gpus = get_nvidia_gpus()
