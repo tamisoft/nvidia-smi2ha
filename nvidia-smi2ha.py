@@ -1,17 +1,35 @@
 #!/usr/bin/env python3
 
-import subprocess
 import json
-import sys
 import os
+import subprocess
+import sys
+import threading
+import time
+
 import paho.mqtt.client as mqtt
-import re
+
+from smi2ha_core import (
+    SENSOR_DESCRIPTIONS,
+    SENSOR_KEYS,
+    ConfigError,
+    ConfigWatcher,
+    Scheduler,
+    built_in_config,
+    format_value,
+    load_config,
+)
 
 # MQTT Setup
 broker = os.environ.get('MQTT_BROKER', '127.0.0.1')
 port = int(os.environ.get('MQTT_PORT', 1883))
 username = os.environ.get('MQTT_USERNAME', '')
 password = os.environ.get('MQTT_PASSWORD', '')
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "config.yaml")
+AVAILABILITY_TOPIC = "nvidia-smi/availability"
+
 
 def get_nvidia_gpus():
     try:
@@ -35,40 +53,17 @@ def get_nvidia_gpus():
         print("Error running nvidia-smi:", e.stderr)
         return []
 
-def on_connect(client, userdata, flags, rc, properties=None):
-    print(f"Connected with result code {rc}")
-    client.message_callback_add("homeassistant/status", publish_configs)
-    client.subscribe("homeassistant/status")
-    publish_configs(client, userdata)
 
-def display_message(client, userdata, msg):
-    print(f"Unhandled message on {msg.topic}: {msg.payload.decode()}")
-
-def publish_configs(client, gpu_info, message=None):
-    if message:
-        print(f"Publishing config due to HA message: {message.payload.decode()}")
-
-    description = {
-        "pwr": {"name": "Power Usage", "device_class": "power", "unit": "W"},
-        "gtemp": {"name": "GPU Temp", "device_class": "temperature", "unit": "°C"},
-        "mtemp": {"name": "Memory Temp", "device_class": "temperature", "unit": "°C"},
-        "sm": {"name": "SM Util", "unit": "%"},
-        "mem": {"name": "Memory Util", "unit": "%"},
-        "enc": {"name": "Encoder Util", "unit": "%"},
-        "dec": {"name": "Decoder Util", "unit": "%"},
-        "jpg": {"name": "JPEG Util", "unit": "%"},
-        "ofa": {"name": "Optical Flow Util", "unit": "%"},
-        "mclk": {"name": "Memory Clock", "device_class": "frequency", "unit": "MHz"},
-        "pclk": {"name": "Processor Clock", "device_class": "frequency", "unit": "MHz"},
-        "pci": {"name": "PCI Throughput", "device_class": "data_rate", "unit": "MB/s"},
-        "rxpci": {"name": "PCI RX", "device_class": "data_rate", "unit": "MB/s"},
-        "txpci": {"name": "PCI TX", "device_class": "data_rate", "unit": "MB/s"},
-    }
-
-    for gpu in gpu_info:
+def publish_configs(client, gpus, config):
+    for gpu in gpus:
         uuid = gpu['uuid']
-        for key, desc in description.items():
-            topic = f'homeassistant/sensor/{uuid}_{key}/config'
+        for key in SENSOR_KEYS:
+            if key in config["disabled"]:
+                client.publish(f"homeassistant/sensor/{uuid}_{key}/config",
+                               "", retain=True)
+                continue
+            desc = SENSOR_DESCRIPTIONS[key]
+            interval = config["sensors"][key]["interval"]
             payload = {
                 "device": {
                     "name": gpu["name"],
@@ -77,26 +72,64 @@ def publish_configs(client, gpu_info, message=None):
                     "model": gpu["name"]
                 },
                 "name": desc["name"],
-                "device_class": desc.get("device_class"),
-                "unit_of_measurement": desc.get("unit"),
-                "value_template": f"{{{{ value_json.{key} }}}}",
+                "unit_of_measurement": desc["unit"],
                 "unique_id": f"{uuid}_{key}",
                 "state_class": "measurement",
-                "expire_after": 60,
+                "expire_after": max(int(interval * 3), 60),
                 "enabled_by_default": True,
-                "availability_topic": "nvidia-smi/availability",
-                "state_topic": f"nvidia-smi/{uuid}"
+                "availability_topic": AVAILABILITY_TOPIC,
+                "state_topic": f"nvidia-smi/{uuid}/{key}"
             }
-            client.publish(topic, json.dumps(payload), retain=True)
+            if desc.get("device_class"):
+                payload["device_class"] = desc["device_class"]
+            client.publish(f"homeassistant/sensor/{uuid}_{key}/config",
+                           json.dumps(payload), retain=True)
 
-    client.publish("nvidia-smi/availability", "online", retain=True)
+    client.publish(AVAILABILITY_TOPIC, "online", retain=True)
 
-def parse_csv_data(headers, units, values):
-    data = {h: (None if v == '-' else v) for h, u, v in zip(headers, units, values)}
+
+def _to_float(value):
+    if value == '-':
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def parse_row(headers, values):
+    data = dict(zip(headers, values))
     gpu_id = data.pop("gpu", None)
-    return {"gpu_id": gpu_id, "json_object": json.dumps(data)}
+    row = {key: _to_float(v) for key, v in data.items()}
+    return gpu_id, row
+
+
+def reader_loop(proc, index_to_uuid, scheduler, stop_event):
+    try:
+        headers = proc.stdout.readline().decode().strip('# \n').split(', ')
+        proc.stdout.readline()  # units line, ignored
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                print("nvidia-smi dmon ended unexpectedly")
+                break
+            text = line.decode().strip()
+            if not text or text.startswith('#'):
+                continue
+            gpu_id, row = parse_row(headers, text.split(', '))
+            uuid = index_to_uuid.get(gpu_id)
+            if not uuid:
+                continue
+            ts = time.monotonic()
+            for key in SENSOR_KEYS:
+                if key in row:
+                    scheduler.on_sample(uuid, key, ts, row[key])
+    finally:
+        stop_event.set()
+
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     print("*** Starting NVIDIA MQTT Exporter ***")
 
     gpus = get_nvidia_gpus()
@@ -104,13 +137,33 @@ def main():
         print("No GPUs found")
         return 1
 
-    # Initialize MQTT
+    try:
+        config = load_config(CONFIG_PATH)
+    except ConfigError as e:
+        print(f"Using built-in config defaults: {e}")
+        print(f"(create {CONFIG_PATH} to customise; see config.yaml.example)")
+        config = built_in_config()
+
+    holder = {"config": config}
+
+    def on_ha_status(client, userdata, message):
+        print(f"Re-publishing configs on HA request: {message.payload.decode()}")
+        publish_configs(client, gpus, holder["config"])
+
+    def on_connect(client, userdata, flags, rc, properties=None):
+        print(f"Connected with result code {rc}")
+        client.message_callback_add("homeassistant/status", on_ha_status)
+        client.subscribe("homeassistant/status")
+        publish_configs(client, gpus, holder["config"])
+
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "nvidia-ha-reporter")
     client.username_pw_set(username, password)
-    client.will_set("nvidia-smi/availability", "offline", retain=True)
+    client.will_set(AVAILABILITY_TOPIC, "offline", retain=True)
     client.user_data_set(gpus)
     client.on_connect = on_connect
-    client.on_message = display_message
+    client.on_message = (lambda c, u, m:
+                         print(f"Unhandled message on {m.topic}: "
+                               f"{m.payload.decode()}"))
 
     try:
         client.connect(broker, port)
@@ -119,41 +172,44 @@ def main():
         print(f"MQTT connection error: {e}")
         return 1
 
+    index_to_uuid = {str(g["index"]): g["uuid"] for g in gpus}
+    scheduler = Scheduler(config, [g["uuid"] for g in gpus])
+    watcher = ConfigWatcher(CONFIG_PATH)
+    stop_event = threading.Event()
+
+    proc = subprocess.Popen(
+        ["nvidia-smi", "dmon", "--format", "csv", "-s", "pucvmet"],
+        stdout=subprocess.PIPE
+    )
+    reader = threading.Thread(
+        target=reader_loop,
+        args=(proc, index_to_uuid, scheduler, stop_event),
+        daemon=True
+    )
+    reader.start()
+
+    print("Monitoring GPUs and sending MQTT updates...")
     try:
-        proc = subprocess.Popen(
-            ["nvidia-smi", "dmon", "--format", "csv", "-s", "pucvmet"],
-            stdout=subprocess.PIPE
-        )
-
-        headers = proc.stdout.readline().decode().strip('# \n').split(', ')
-        units = proc.stdout.readline().decode().strip('# \n').split(', ')
-
-        print("Monitoring GPUs and sending MQTT updates...")
-
-        while True:
-            line = proc.stdout.readline().decode()
-            if not line or line.startswith('#'):
-                continue
-
-            values = line.strip().split(', ')
-            parsed = parse_csv_data(headers, units, values)
-
-            gpu_id = parsed["gpu_id"]
-            matching_gpu = next((g for g in gpus if str(g["index"]) == gpu_id), None)
-            if not matching_gpu:
-                continue
-
-            topic = f'nvidia-smi/{matching_gpu["uuid"]}'
-            client.publish(topic, parsed["json_object"])
-
+        while not stop_event.is_set():
+            now = time.monotonic()
+            for uuid, key, value in scheduler.tick(now):
+                client.publish(f"nvidia-smi/{uuid}/{key}", format_value(value))
+            new_config = watcher.check()
+            if new_config is not None:
+                print("Config changed, reloading")
+                holder["config"] = new_config
+                scheduler.reload_config(new_config)
+                publish_configs(client, gpus, new_config)
+            time.sleep(0.2)
     except KeyboardInterrupt:
         print("Shutting down...")
-        proc.terminate()
-        client.publish("nvidia-smi/availability", "offline", retain=True)
-        client.loop_stop()
     finally:
+        proc.terminate()
         proc.wait()
-        return 0
+        client.publish(AVAILABILITY_TOPIC, "offline", retain=True)
+        client.loop_stop()
+    return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
