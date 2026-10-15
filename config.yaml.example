@@ -23,11 +23,8 @@ sensors:
   pwr:
     interval: 60
     type: mean
-  # Peak GPU / memory temperature over the past minute
+  # Peak GPU temperature over the past minute
   gtemp:
-    interval: 60
-    type: max
-  mtemp:
     interval: 60
     type: max
   # The Tesla P4 does not report a memory temperature: don't register it
