@@ -172,3 +172,26 @@ class Scheduler:
         self._config = config
         for key in self._next_due:
             self._next_due[key] = None
+
+
+class ConfigWatcher:
+    """Detects config file changes by mtime. Single-threaded use."""
+
+    def __init__(self, path):
+        self._path = path
+        self._mtime = os.path.getmtime(path) if os.path.exists(path) else None
+
+    def check(self):
+        if not os.path.exists(self._path):
+            return None
+        mtime = os.path.getmtime(self._path)
+        if mtime == self._mtime:
+            return None
+        try:
+            config = load_config(self._path)
+        except ConfigError as e:
+            print(f"Config reload failed, keeping previous config: {e}")
+            self._mtime = mtime
+            return None
+        self._mtime = mtime
+        return config
