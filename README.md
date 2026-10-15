@@ -6,6 +6,7 @@ This project is a Python script that sends Nvidia GPU metrics to Home Assistant.
 - Sends Nvidia GPU metrics to Home Assistant
 - Uses MQTT auto-discovery feature to register all GPUs
 - Automatically installs a virtual environment and required package
+- Per-sensor configurable report interval and aggregation (last/mean/median/max/min) via `config.yaml`, hot-reloaded
 
 ![Home Assistant Screenshot](images/nvidia-smi2ha.jpg)
 
@@ -24,6 +25,29 @@ This project is a Python script that sends Nvidia GPU metrics to Home Assistant.
 
 ## Usage
 After installation, the script will start sending GPU metrics to your Home Assistant instance. You can view these metrics in the Home Assistant dashboard.
+
+## Configuration
+
+Reporting is controlled by `config.yaml` in the repository directory
+(copy `config.yaml.example` to start). The file is watched and reloaded
+automatically; no service restart is needed.
+
+Each of the 14 sensors (`pwr gtemp mtemp sm mem enc dec jpg ofa mclk pclk
+pci rxpci txpci`) can set:
+
+- `interval` (seconds, >= 1) — how often the sensor reports
+- `type` — `last`, `mean`, `median`, `max` or `min`; the value published is
+  this aggregation over the samples collected during the interval
+
+Sensors not listed use `defaults` (built-in: `interval: 10`, `type: last`).
+Example: reporting the average power draw once per minute:
+
+```yaml
+sensors:
+  pwr:
+    interval: 60
+    type: mean
+```
 
 ## Troubleshooting
 If you encounter any issues, please check the following:
