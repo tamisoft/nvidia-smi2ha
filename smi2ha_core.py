@@ -5,6 +5,7 @@ No MQTT, subprocess, or threading here so everything is unit-testable.
 
 import os
 import statistics
+from collections import deque
 
 import yaml
 
@@ -131,3 +132,43 @@ def aggregate(samples, now, interval, agg_type):
 def format_value(v):
     s = f"{v:.2f}".rstrip("0").rstrip(".")
     return s if s else "0"
+
+
+class Scheduler:
+    """Tracks per-(GPU, sensor) sample buffers and reports due sensors."""
+
+    def __init__(self, config, uuids):
+        self._config = config
+        self._buffers = {
+            (uuid, key): deque()
+            for uuid in uuids
+            for key in config["sensors"]
+        }
+        self._next_due = {k: None for k in self._buffers}
+
+    def on_sample(self, uuid, key, ts, value):
+        self._buffers[(uuid, key)].append((ts, value))
+
+    def _prune(self, buf, now, interval):
+        cutoff = now - interval
+        while buf and buf[0][0] < cutoff:
+            buf.popleft()
+
+    def tick(self, now):
+        due = []
+        for (uuid, key), buf in self._buffers.items():
+            setting = self._config["sensors"][key]
+            self._prune(buf, now, setting["interval"])
+            next_due = self._next_due[(uuid, key)]
+            if next_due is not None and now < next_due:
+                continue
+            value = aggregate(buf, now, setting["interval"], setting["type"])
+            if value is not None:
+                due.append((uuid, key, value))
+                self._next_due[(uuid, key)] = now + setting["interval"]
+        return due
+
+    def reload_config(self, config):
+        self._config = config
+        for key in self._next_due:
+            self._next_due[key] = None
